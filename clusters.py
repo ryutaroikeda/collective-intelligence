@@ -1,5 +1,6 @@
 from math import sqrt
 from PIL import Image, ImageDraw, ImageFont
+import random
 
 CLUSTER_PIXEL_HEIGHT = 20
 DENDOGRAM_WIDTH = 1200
@@ -129,10 +130,58 @@ def draw_dendrogram(cluster, labels, font, jpeg='clusters.jpg'):
     draw_node(draw, cluster, 10, height / 2, scaling, labels, font)
     image.save(jpeg, 'JPEG')
 
+def rotate_matrix(data):
+    result = []
+    for i in range(len(data[0])):
+        row = [data[j][i] for j in range(len(data))]
+        result.append(row)
+    return result
+
+def average(numbers):
+    return sum(numbers) / len(numbers)
+
+def kcluster(rows, k=4, distance=pearson):
+    # get the minimum and maximum for each column
+    ranges = [(min([row[i] for row in rows]),
+            max(row[i] for row in rows)) for i in range(len(rows[0]))]
+    clusters = [[random.random() * (ranges[i][1] - ranges[i][0]) + ranges[i][0]
+        for i in range(len(ranges))] for j in range(k)]
+
+    last_matches = None
+    for t in range(100):
+        best_matches = [[] for i in range(k)]
+
+        for j in range(len(rows)):
+            best_match = 0
+            for i in range(k):
+                d = distance(clusters[i], rows[j])
+                if d < distance(clusters[best_match], rows[j]):
+                    best_match = i
+            best_matches[best_match].append(j)
+
+        # we're done if nothing changed
+        if last_matches == best_matches:
+            break
+        last_matches = best_matches
+
+        # move clusters
+        for i in range(k):
+            if len(best_matches[i]) == 0:
+                continue
+            match_rows = [rows[j] for j in best_matches[i]]
+            clusters[i] = [average([row[j] for row in match_rows])
+                for j in range(len(rows[0]))]
+
+    return best_matches
+
 if __name__ == '__main__':
     colnames, rownames, rows = read_file('blogdata.tsv')
-    cluster = hcluster(rows, pearson)
+    #rows = rotate_matrix(rows)
+    #cluster = hcluster(rows, pearson)
     unicode_font = ImageFont.truetype('DejaVuSans.ttf', 12)
     #print_cluster(cluster, labels=rownames)
-    draw_dendrogram(cluster, rownames, unicode_font)
-
+    #draw_dendrogram(cluster, rownames, unicode_font)
+    #draw_dendrogram(cluster, colnames, unicode_font)
+    k = 4
+    clusters = kcluster(rows, k=k)
+    print([[rownames[i] for i in clusters[j]] for j in range(k)])
