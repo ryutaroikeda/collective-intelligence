@@ -31,6 +31,9 @@ def pearson(v1, v2):
 
     return 1.0 - (numerator / denominator)
 
+def euclidean(v1, v2):
+    return sqrt(sum([pow(v1[i], 2) + pow(v2[i], 2) for i in range(len(v1))]))
+
 class bicluster:
     def __init__(self, vec, left=None, right=None, distance=0.0, id=None):
         self.vec = vec
@@ -174,14 +177,80 @@ def kcluster(rows, k=4, distance=pearson):
 
     return best_matches
 
-if __name__ == '__main__':
-    colnames, rownames, rows = read_file('blogdata.tsv')
+def scale_down(rows, distance=pearson, rate=0.01):
+    n = len(rows)
+
+    real_distances = [[distance(rows[i], rows[j]) for i in range(n)]
+            for j in range(n)]
+
+    projections = [[random.random(), random.random()] for i in range(n)]
+
+    projected_distances = [[0.0 for i in range(n)] for j in range(n)]
+
+    last_error = None
+
+    for m in range(0, 1000):
+        total_error = 0.0
+        projected_distances = [[euclidean(projections[i], projections[j])
+            for i in range(n)] for j in range(n)]
+
+        grad = [[0.0, 0.0] for j in range(n)]
+
+        for k in range(n):
+            for j in range(n):
+                if j == k:
+                    continue
+                error_term = (real_distances[k][j] -
+                    projected_distances[k][j]) / real_distances[k][j]
+
+                for i in range(2):
+                    grad[k][i] += ((projections[k][i] - projections[j][i]) /
+                        projected_distances[k][j]) * error_term
+                total_error += abs(error_term)
+        print(total_error)
+
+        if last_error and last_error <= total_error:
+            break
+        last_error = total_error
+
+        # get new projections
+        for k in range(n):
+            for j in range(2):
+                projections[k][j] += grad[k][j] * rate
+
+    return projections
+
+def draw_scaled_down_data(data, labels, font, jpeg='mds2d.jpg'):
+    img = Image.new('RGB', (2000, 2000), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    for i in range(len(data)):
+        x = (data[i][0] + 0.5) * 1000
+        y = (data[i][1] + 0.5) * 1000
+        draw.text((x, y), labels[i], fill=(0, 0, 0), font=font)
+    img.save(jpeg, 'JPEG')
+
+def demo_ascii_cluster(rows, rownames):
+    cluster = hcluster(rows, pearson)
+    print_cluster(cluster, labels=rownames)
+
+def demo_dendrogram(rows, rownames, font):
     #rows = rotate_matrix(rows)
-    #cluster = hcluster(rows, pearson)
-    unicode_font = ImageFont.truetype('DejaVuSans.ttf', 12)
-    #print_cluster(cluster, labels=rownames)
-    #draw_dendrogram(cluster, rownames, unicode_font)
-    #draw_dendrogram(cluster, colnames, unicode_font)
-    k = 4
+    cluster = hcluster(rows, pearson)
+    draw_dendrogram(cluster, rownames, font)
+
+def demo_k_means(rows, rownames, k=4):
     clusters = kcluster(rows, k=k)
     print([[rownames[i] for i in clusters[j]] for j in range(k)])
+
+def demo_multidimensional_scaling(rows, rownames, font):
+    projections = scale_down(rows, pearson, 0.01)
+    print(projections)
+    draw_scaled_down_data(projections, rownames, font)
+
+if __name__ == '__main__':
+    colnames, rownames, rows = read_file('blogdata.tsv')
+    unicode_font = ImageFont.truetype('DejaVuSans.ttf', 12)
+    #demo_ascii_cluster(rows, rownames)
+    #demo_dendrogram(rows, rownames, unicode_font)
+    #demo_k_means(rows, rownames, 4)
+    demo_multidimensional_scaling(rows, rownames, unicode_font)
