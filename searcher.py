@@ -40,7 +40,7 @@ class Searcher:
         sql_query = 'SELECT %s FROM %s WHERE %s' % (
                 ', '.join(fields),
                 ', '.join(tables),
-                'and '.join(predicates))
+                ' and '.join(predicates))
 
         cursor = self.con.execute(sql_query)
         matches = [Match(row[0], row[1:]) for row in cursor]
@@ -48,7 +48,10 @@ class Searcher:
 
     def get_scored_list(self, matches, word_ids):
         total_scores = dict([(match.url_id, 0) for match in matches])
-        weights = [(1.0, self.frequency_score(matches))]
+        weights = [(1.0, self.frequency_score(matches)),
+                (0.0, self.location_score(matches)),
+                (0.0, self.distance_score(matches)),
+                (1.0, self.inbound_link_score(matches))]
 
         for (weight, scores) in weights:
             for url_id in total_scores:
@@ -87,6 +90,38 @@ class Searcher:
         for match in matches:
             counts[match.url_id] += 1
         return self.normalize_scores(counts, False)
+
+    def location_score(self, matches):
+        result = dict([(match.url_id, 10000000) for match in matches])
+        for match in matches:
+            score = sum(match.locations)
+            if score < result[match.url_id]:
+                result[match.url_id] = score
+        return self.normalize_scores(result, small_is_better=True)
+
+    def distance_score(self, matches):
+        if 0 == len(matches):
+            return dict([])
+
+        # quit if search term has one or less keywords
+        if len(matches[0].locations) <= 1:
+            return dict([(match.url_id, 1.0) for match in matches])
+
+        result = dict([(match.url_id, 10000000) for match in matches])
+        for match in matches:
+            distance = sum(
+                    [abs(match.locations[i] - match.locations[i-1])
+                        for i in range(len(match.locations))])
+            if distance < result[match.url_id]:
+                result[match.url_id] = distance
+        return self.normalize_scores(result, small_is_better=True)
+
+    def inbound_link_score(self, matches):
+        urls = set([match.url_id for match in matches])
+        result = dict([(url, self.con.execute(
+            'SELECT COUNT(*) FROM link WHERE to_id = ?', (url,)).fetchone()[0])
+            for url in urls])
+        return self.normalize_scores(result)
 
 if __name__ == '__main__':
     con = sqlite3.connect('searchengine.sqlite3')
