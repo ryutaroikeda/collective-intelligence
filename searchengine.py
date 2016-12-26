@@ -177,14 +177,14 @@ class Crawler:
     def create_index_tables(self):
         self.con.execute('CREATE TABLE url(url)')
         self.con.execute('CREATE TABLE word(word)')
-        self.con.execute('''CREATE TABLE word_location(url_id, word_id, 
-            location)''')
+        self.con.execute(
+                'CREATE TABLE word_location(url_id, word_id, location)')
         self.con.execute('CREATE TABLE link(from_id integer, to_id integer)')
         self.con.execute('CREATE TABLE link_words(word_id, link_id)')
         self.con.execute('CREATE INDEX word_index ON word(word)')
         self.con.execute('CREATE INDEX url_index ON url(url)')
-        self.con.execute('''CREATE INDEX location_index ON
-                word_location(word_id)''')
+        self.con.execute(
+                'CREATE INDEX location_index ON word_location(word_id)')
         self.con.execute('CREATE INDEX url_from_index ON link(from_id)')
         self.con.execute('CREATE INDEX url_to_index ON link(to_id)')
 
