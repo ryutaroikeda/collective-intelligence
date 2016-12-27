@@ -48,10 +48,11 @@ class Searcher:
 
     def get_scored_list(self, matches, word_ids):
         total_scores = dict([(match.url_id, 0) for match in matches])
-        weights = [(1.0, self.frequency_score(matches)),
+        weights = [(0.0, self.frequency_score(matches)),
                 (0.0, self.location_score(matches)),
                 (0.0, self.distance_score(matches)),
-                (1.0, self.inbound_link_score(matches))]
+                (0.0, self.inbound_link_score(matches)),
+                (1.0, self.page_rank_score(matches))]
 
         for (weight, scores) in weights:
             for url_id in total_scores:
@@ -122,6 +123,16 @@ class Searcher:
             'SELECT COUNT(*) FROM link WHERE to_id = ?', (url,)).fetchone()[0])
             for url in urls])
         return self.normalize_scores(result)
+
+    def page_rank_score(self, matches):
+        if 0 == len(matches):
+            return dict([])
+
+        query = '''SELECT url_id, score FROM page_rank
+                    WHERE url_id IN (%s)''' % ','.join(
+                    [str(match.url_id) for match in matches])
+        rows = self.con.execute(query).fetchall()
+        return dict([row for row in rows])
 
 if __name__ == '__main__':
     con = sqlite3.connect('searchengine.sqlite3')
