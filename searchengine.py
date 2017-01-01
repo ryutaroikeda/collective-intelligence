@@ -187,6 +187,7 @@ class Crawler:
                 'CREATE INDEX location_index ON word_location(word_id)')
         self.con.execute('CREATE INDEX url_from_index ON link(from_id)')
         self.con.execute('CREATE INDEX url_to_index ON link(to_id)')
+        self.con.commit()
 
 if __name__ == '__main__':
     url = 'https://kiwitobes.com'

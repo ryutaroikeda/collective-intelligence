@@ -1,4 +1,5 @@
 from collections import namedtuple
+import neuralnetwork
 import sqlite3
 import sys
 
@@ -17,7 +18,7 @@ class Searcher:
         table_number = 0
 
         words = search_term.split()
- 
+
         for word in words:
             word_row = self.con.execute(
                     'SELECT rowid FROM word where word = ?',
@@ -52,7 +53,9 @@ class Searcher:
                 (0.0, self.location_score(matches)),
                 (0.0, self.distance_score(matches)),
                 (0.0, self.inbound_link_score(matches)),
-                (1.0, self.page_rank_score(matches))]
+                (0.0, self.page_rank_score(matches)),
+                (0.0, self.link_text_score(matches, word_ids)),
+                (1.0, self.neural_net_score(matches, word_ids))]
 
         for (weight, scores) in weights:
             for url_id in total_scores:
@@ -68,9 +71,10 @@ class Searcher:
     def query(self, search_term):
         matches, word_ids = self.find_matches(search_term)
         scores = self.get_scored_list(matches, word_ids)
-        return sorted([(score, self.get_url_name(url_id))
+        url_ids = [match.url_id for match in matches]
+        return (sorted([(score, self.get_url_name(url_id))
             for (url_id, score) in scores.items()],
-                reverse=True)
+                reverse=True), word_ids, url_ids)
 
     def normalize_scores(self, scores, small_is_better=False):
         epsilon = 0.000001
@@ -90,7 +94,7 @@ class Searcher:
         counts = dict([(match.url_id, 0) for match in matches])
         for match in matches:
             counts[match.url_id] += 1
-        return self.normalize_scores(counts, False)
+        return self.normalize_scores(counts, small_is_better=False)
 
     def location_score(self, matches):
         result = dict([(match.url_id, 10000000) for match in matches])
@@ -120,8 +124,8 @@ class Searcher:
     def inbound_link_score(self, matches):
         urls = set([match.url_id for match in matches])
         result = dict([(url, self.con.execute(
-            'SELECT COUNT(*) FROM link WHERE to_id = ?', (url,)).fetchone()[0])
-            for url in urls])
+            'SELECT COUNT(*) FROM link WHERE to_id = ?',
+            (url,)).fetchone()[0]) for url in urls])
         return self.normalize_scores(result)
 
     def page_rank_score(self, matches):
@@ -134,12 +138,41 @@ class Searcher:
         rows = self.con.execute(query).fetchall()
         return dict([row for row in rows])
 
+    def link_text_score(self, matches, word_ids):
+        result = dict([(match.url_id, 0.0) for match in matches])
+        for word_id in word_ids:
+            rows = self.con.execute(
+                    '''SELECT from_id, to_id FROM link WHERE rowid IN (
+                    SELECT link_id FROM link_words WHERE word_id = ?)''',
+                    (word_id,)).fetchall()
+            for (from_id, to_id) in rows:
+                if to_id not in result:
+                    continue
+                result[to_id] += self.con.execute(
+                        'SELECT score FROM page_rank WHERE url_id = ?',
+                        (from_id,)).fetchone()[0]
+        return self.normalize_scores(result, small_is_better=False)
+
+    def neural_net_score(self, matches, word_ids):
+        url_ids = [match.url_id for match in matches]
+        nn = neuralnetwork.NeuralNetwork(self.con)
+        nn.generate_hidden_node(word_ids, url_ids)
+        scores = nn.get_result(word_ids, url_ids)
+        result = dict([(url_ids[i], scores[i]) for i in range(len(url_ids))])
+        print('CHANGE ME')
+        target = [0.0] * len(url_ids)
+        if 0 < len(url_ids):
+            target[0] = 1.0
+        nn.dump()
+        nn.back_propagation(target) 
+        return self.normalize_scores(result, small_is_better=False)
+
 if __name__ == '__main__':
     con = sqlite3.connect('searchengine.sqlite3')
     searcher = Searcher(con)
     query = sys.argv[1]
     results = searcher.query(query)
-    for (score, url) in results:
+    for (score, url) in results[0]:
         print('%s\t%s' % (score, url))
 
     del searcher
