@@ -44,10 +44,14 @@ def get_rows(rows):
 def split_rows_on_attribute(rows, attribute_id, value):
     results = SplitRows(attribute_id, value, [], [])
     for row in rows:
+        if isinstance(value, int):
+            if value >= row.attributes[attribute_id]:
+                results.matches.append(row)
+                continue
         if value == row.attributes[attribute_id]:
             results.matches.append(row)
-        else:
-            results.mismatches.append(row)
+            continue
+        results.mismatches.append(row)
     return results
 
 def count_results(rows):
@@ -98,11 +102,11 @@ def build_tree(rows, score=entropy):
         mismatch_node = build_tree(best_split.mismatches, score)
         return Node(best_split.attribute_id, best_split.value, None,
                 match_node, mismatch_node)
-    return Node(None, None, count_results(rows), None, None)
+    return Node(None, None, rows, None, None)
 
 def print_tree(node, indent=''):
     if node.results:
-        print(node.results)
+        print(count_results(node.results))
         return
     assert 0 <= node.attribute_id
     print(headers[node.attribute_id] + ': ' + str(node.value) + '?')
@@ -111,8 +115,41 @@ def print_tree(node, indent=''):
     sys.stdout.write(indent + 'false-> ')
     print_tree(node.mismatch_node, indent + '    ')
 
+def classify(tree, observation):
+    if tree.results:
+        return count_results(tree.results)
+    if isinstance(tree.value, int):
+        if observation[tree.attribute_id] >= tree.value:
+            return classify(tree.match_node, observation)
+    if observation[tree.attribute_id] == tree.value:
+        return classify(tree.match_node, observation)
+    return classify(tree.mismatch_node, observation)
+
+def prune(tree, max_gain, score=entropy):
+    if not tree.match_node or not tree.mismatch_node:
+        return
+    if tree.match_node.results and tree.mismatch_node.results:
+        rows = tree.match_node.results + tree.mismatch_node.results
+        p = len(tree.match_node.results) / len(rows)
+        information_gain = score(rows) - \
+                (p * score(tree.match_node.results) + \
+                ((1 - p) * score(tree.mismatch_node.results)))
+        if information_gain < max_gain:
+            tree.match_node = None
+            tree.mismatch_node = None
+            tree.results = rows
+        return
+
+    if tree.match_node:
+        prune(tree.match_node, max_gain, score)
+    if tree.mismatch_node:
+        prune(tree.mismatch_node, max_gain, score)
+
 if __name__ == '__main__':
     rows = get_rows(my_data)
-    tree = build_tree(rows)
+    tree = build_tree(rows, entropy)
+    print_tree(tree)
+    print(classify(tree, ['Google', 'USA', 'yes', 30]))
+    prune(tree, 1.5)
     print_tree(tree)
 
